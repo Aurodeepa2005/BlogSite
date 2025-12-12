@@ -1,20 +1,18 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { usePosts } from "../context/PostContext";
 import { z } from "zod";
 
-/*
-  Validation rules:
-  - name: at least 3 chars
-  - email: valid email AND endsWith('.com') as you requested
-  - password: min 6 chars AND must contain at least one special character
-*/
-const schema = z.object({
-  name: z.string().min(3, "Name must be at least 3 characters."),
+// ZOD VALIDATION SCHEMA
+const loginSchema = z.object({
+  name: z
+    .string()
+    .min(3, "Name must be at least 3 characters long.")
+    .regex(/^[A-Za-z\s]+$/, "Name must contain only letters."),
   email: z
     .string()
-    .email("Please enter a valid email (must include @ and domain).")
-    .refine((v) => v.toLowerCase().endsWith(".com"), {
+    .email("Enter a valid email address.")
+    .refine((v) => v.endsWith(".com"), {
       message: "Email must end with .com",
     }),
   password: z
@@ -22,7 +20,7 @@ const schema = z.object({
     .min(6, "Password must be at least 6 characters long.")
     .regex(
       /[^A-Za-z0-9]/,
-      "Password must contain at least one special character (!@#$ etc.)"
+      "Password must contain at least one special character (!@#$%^&*)."
     ),
 });
 
@@ -31,172 +29,147 @@ export default function Login() {
   const navigate = useNavigate();
 
   const [form, setForm] = useState({ name: "", email: "", password: "" });
-  const [errors, setErrors] = useState({}); // inline field errors
+  const [errors, setErrors] = useState({});
+  const [shake, setShake] = useState(false);
+  const [toast, setToast] = useState(null);
 
-  // toast list: { id, type: 'success'|'error', message }
-  const [toasts, setToasts] = useState([]);
-
-  // helper: push a toast (auto-dismiss)
-  const pushToast = (type, message, timeout = 4000) => {
-    const id = Date.now() + Math.random();
-    setToasts((t) => [...t, { id, type, message }]);
-    setTimeout(() => {
-      setToasts((t) => t.filter((x) => x.id !== id));
-    }, timeout);
+  // Show toast
+  const showToast = (type, msg) => {
+    setToast({ type, msg });
+    setTimeout(() => setToast(null), 2500);
   };
 
-  // live-validate a single changed field to provide instant inline feedback
+  // Live field validation
   const handleChange = (e) => {
     const { name, value } = e.target;
-    const next = { ...form, [name]: value };
-    setForm(next);
+    const updated = { ...form, [name]: value };
+    setForm(updated);
 
-    // Try parsing only; we want per-field feedback so derive errors from safeParse
-    const res = schema.safeParse(next);
-    if (res.success) {
-      setErrors({});
+    const result = loginSchema.safeParse(updated);
+    if (!result.success) {
+      const newErrors = {};
+      result.error.errors.forEach((err) => {
+        newErrors[err.path[0]] = err.message;
+      });
+      setErrors(newErrors);
     } else {
-      // build an errors map for only the fields that failed
-      const map = {};
-      for (const err of res.error.errors) {
-        map[err.path[0]] = err.message;
-      }
-      setErrors(map);
+      setErrors({});
     }
   };
 
-  // Submit handler: show popup + inline errors
+  // Submit handler
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    const result = schema.safeParse(form);
+    const result = loginSchema.safeParse(form);
     if (!result.success) {
-      // Build field-based errors for inline display
-      const fieldErrors = {};
-      for (const err of result.error.errors) {
-        fieldErrors[err.path[0]] = err.message;
-      }
-      setErrors(fieldErrors);
+      const newErrors = {};
+      result.error.errors.forEach((err) => {
+        newErrors[err.path[0]] = err.message;
+      });
+      setErrors(newErrors);
 
-      // Build a friendly toast message: show first error prominently
-      const firstMsg = result.error.errors[0]?.message || "Validation failed.";
-      pushToast("error", firstMsg);
+      // ⚠️ Trigger shake animation
+      setShake(true);
+      setTimeout(() => setShake(false), 500);
+
+      // Show error toast
+      showToast("error", result.error.errors[0].message);
       return;
     }
 
-    // Success: call loginUser (store full object) and show success toast
-    loginUser({ name: form.name.trim(), email: form.email.trim() });
-    pushToast("success", "Login successful — welcome back!");
-    // navigate after a short moment so user sees the toast (optional)
-    setTimeout(() => navigate("/"), 400);
+    // ✔ Valid credentials -> set user
+    loginUser({
+      name: form.name.trim(),
+      email: form.email.trim(),
+    });
+
+    showToast("success", "Login successful 🎉");
+
+    setTimeout(() => navigate("/"), 600);
   };
-
-  // Small visual Toasts component (top-right)
-  const Toasts = () => (
-    <div className="fixed top-6 right-6 z-50 flex flex-col gap-3">
-      {toasts.map((t) => (
-        <div
-          key={t.id}
-          className={`max-w-sm px-4 py-3 rounded-lg shadow-md text-sm ${
-            t.type === "success"
-              ? "bg-emerald-600 text-white"
-              : "bg-red-500 text-white"
-          }`}
-          role="status"
-          aria-live="polite"
-        >
-          {t.message}
-        </div>
-      ))}
-    </div>
-  );
-
-  // Clear a specific inline error when the user focuses an input (nice UX)
-  const handleFocus = (e) => {
-    const { name } = e.target;
-    if (errors[name]) setErrors((prev) => ({ ...prev, [name]: "" }));
-  };
-
-  // optional: clear toasts on unmount
-  useEffect(() => {
-    return () => setToasts([]);
-  }, []);
 
   return (
-    <div className="pt-28 pb-16 px-4 min-h-screen flex items-start justify-center bg-transparent">
-      <Toasts />
+    <div className="pt-28 pb-20 min-h-screen flex justify-center px-4 bg-transparent">
+      {/* Toast Notification */}
+      {toast && (
+        <div
+          className={`fixed top-6 right-6 px-4 py-3 rounded-md shadow-lg text-white z-50 ${
+            toast.type === "success" ? "bg-green-600" : "bg-red-500"
+          }`}
+        >
+          {toast.msg}
+        </div>
+      )}
 
-      <div className="max-w-md w-full glass-card p-8 rounded-2xl shadow-xl">
-        <h1 className="text-3xl font-semibold text-[#6C63FF] mb-4 text-center">
-          Welcome Back
-        </h1>
+      <div
+        className={`w-full max-w-md p-8 rounded-xl shadow-xl bg-white/70 backdrop-blur-xl transition-all ${
+          shake ? "animate-shake" : ""
+        }`}
+      >
+        <h2 className="text-3xl font-bold text-purple-600 text-center mb-6">
+          Login
+        </h2>
 
-        <form className="space-y-4" onSubmit={handleSubmit} noValidate>
-          {/* NAME */}
+        <form className="space-y-5" onSubmit={handleSubmit}>
+          {/* Name */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Name
-            </label>
+            <label className="font-medium text-gray-700">Name</label>
             <input
+              type="text"
               name="name"
               value={form.name}
               onChange={handleChange}
-              onFocus={handleFocus}
-              className={`w-full p-3 border rounded-md focus:ring-2 focus:ring-[#9f77ff] ${
-                errors.name ? "border-red-400" : ""
+              className={`w-full p-3 border rounded-md mt-1 ${
+                errors.name ? "border-red-400" : "border-gray-300"
               }`}
-              placeholder="Your full name (min 3 characters)"
+              placeholder="Enter your name"
             />
             {errors.name && (
               <p className="text-red-600 text-sm mt-1">{errors.name}</p>
             )}
           </div>
 
-          {/* EMAIL */}
+          {/* Email */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Email
-            </label>
+            <label className="font-medium text-gray-700">Email</label>
             <input
-              name="email"
               type="email"
+              name="email"
               value={form.email}
               onChange={handleChange}
-              onFocus={handleFocus}
-              className={`w-full p-3 border rounded-md focus:ring-2 focus:ring-[#9f77ff] ${
-                errors.email ? "border-red-400" : ""
+              className={`w-full p-3 border rounded-md mt-1 ${
+                errors.email ? "border-red-400" : "border-gray-300"
               }`}
-              placeholder="you@example.com (must end with .com)"
+              placeholder="example@gmail.com"
             />
             {errors.email && (
               <p className="text-red-600 text-sm mt-1">{errors.email}</p>
             )}
           </div>
 
-          {/* PASSWORD */}
+          {/* Password */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Password
-            </label>
+            <label className="font-medium text-gray-700">Password</label>
             <input
-              name="password"
               type="password"
+              name="password"
               value={form.password}
               onChange={handleChange}
-              onFocus={handleFocus}
-              className={`w-full p-3 border rounded-md focus:ring-2 focus:ring-[#9f77ff] ${
-                errors.password ? "border-red-400" : ""
+              className={`w-full p-3 border rounded-md mt-1 ${
+                errors.password ? "border-red-400" : "border-gray-300"
               }`}
-              placeholder="At least 6 chars + 1 special character"
+              placeholder="At least 6 chars & 1 special character"
             />
             {errors.password && (
               <p className="text-red-600 text-sm mt-1">{errors.password}</p>
             )}
           </div>
 
+          {/* Submit Button */}
           <button
             type="submit"
-            className="w-full py-3 bg-[#7a56e8] text-white rounded-md shadow hover:opacity-95 transition"
+            className="w-full bg-purple-600 text-white py-3 rounded-md shadow hover:bg-purple-700 transition"
           >
             Login
           </button>
