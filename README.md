@@ -7,7 +7,7 @@ This project focuses on beautiful UI, smooth UX, and simple client-side authenti
 ---
 
 ## 🚀 Live Demo  
-🔗 [View BlogNest Live](https://blog-site-byauro.netlify.app/)
+🔗 [View BlogNest Live](https://blogsite-byauro.netlify.app/)
 
 
 ---
