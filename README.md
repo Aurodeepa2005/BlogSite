@@ -61,5 +61,4 @@ This project focuses on beautiful UI, smooth UX, and simple client-side authenti
 
 ---
 
-## 📁 Project Structure
 
